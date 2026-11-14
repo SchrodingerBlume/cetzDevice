@@ -1,0 +1,866 @@
+% \VignetteIndexEntry{The cetzDevice Package}
+% \VignetteDepends{cetzDevice}
+% \VignetteEngine{knitr::knitr}
+% \VignetteEncoding{UTF-8}
+\documentclass[10pt,oneside,letterpaper,article]{memoir}
+\usepackage[utf8]{inputenc}
+\usepackage{cetzDeviceVignette}
+\ifdefined\pdfminorversion\pdfminorversion=7\fi
+
+<<setup,include=FALSE,eval=TRUE,purl=FALSE>>=
+library(cetzDevice)
+build_figures <- isTRUE(getOption("cetzDevice.build_figures"))
+knitr::opts_knit$set(root.dir = normalizePath("figures"))
+knitr::opts_chunk$set(eval = build_figures, echo = TRUE, results = "hide",
+                     message = FALSE, warning = FALSE, comment = NA)
+knitr::knit_hooks$set(chunk = function(x, options) x, source = function(x, options) {
+  lines <- sum(lengths(strsplit(x, "\n", fixed = TRUE)))
+  paste0("\\needspace{", lines + 3L, "\\baselineskip}\n\\begin{rcode}\n",
+         paste(x, collapse = "\n"), "\n\\end{rcode}\n")
+})
+@
+
+\title{CeTZDevice: Typst Graphics for R}
+\author{Andrew Junhao Wu}
+\date{Version \Sexpr{as.character(packageVersion("cetzDevice"))}}
+
+\begin{document}
+\begin{titlingpage}
+  \begin{tikzpicture}[remember picture,overlay]
+    \node[anchor=north east,rotate=90,inner sep=0pt,
+      font=\fontsize{36}{40}\selectfont\bfseries]
+      (title) at ([xshift=0.5in,yshift=-0.5in]current page.north west)
+      {\textcolor{red}{CeTZ}Device};
+    \draw[line width=5pt] ([xshift=7.5pt]title.base west) --
+      ([xshift=7.5pt]title.base east);
+    \node[right=12.5pt of title.base east,anchor=north west,
+      align=left,font=\Huge\bfseries] (subtitle) {Typst Graphics for \lang{R}};
+    \node[below=\baselineskip of subtitle.south west,anchor=north west,
+      font=\LARGE] (author) {Andrew Junhao Wu};
+    \node[right=12.5pt of title.base west,anchor=south west,
+      text width=2.1in,align=left,font=\small] (info)
+      {\url{https://github.com/SchrodingerBlume/cetzDevice}};
+    \node[above=\baselineskip of info.north west,anchor=south west,
+      font=\LARGE\bfseries] {\thedate};
+    \node[anchor=north east,inner sep=0pt]
+      at ([xshift=-0.3in,yshift=-1.8in]current page.north east)
+      {\includegraphics[width=4.8in]{figures/normal.pdf}};
+    \node[anchor=south east,text=black!20,
+      font=\fontsize{190}{190}\selectfont\sffamily\bfseries]
+      at ([xshift=-0.4in,yshift=0.4in]current page.south east) {R};
+  \end{tikzpicture}
+\end{titlingpage}
+
+\frontmatter
+\tableofcontents*
+\mainmatter
+
+\chapter{Introduction}
+
+The \pkg{cetzDevice} package provides a graphics output device for \lang{R}
+that records plots in a Typst-friendly format. The device transforms plotting
+commands issued by \lang{R} functions into Typst code blocks. When included
+in a paper typeset by Typst, these blocks are interpreted with the help of
+CeTZ, a drawing package written by Johannes Wolf, fenjalien, and contributors.
+Typst handles the text in the plot as well as the text in the surrounding
+document. Mathematical formulae and native Typst content can therefore be
+used in labels and annotations.
+
+The device works with base graphics and grid graphics. This includes plots
+produced by \pkg{ggplot2}, \pkg{lattice}, and \pkg{patchwork}. Figures are
+stored as editable source, with raster images embedded in the same file.
+
+This document is divided into three parts. Part~\ref{part:usage} describes
+the package functions and gives examples of their use. Part~\ref{part:installation}
+describes the installation of Typst and CeTZ. Part~\ref{part:internals}
+describes the implementation of the device, including its use of Typst to
+calculate font metrics.
+
+\section{Acknowledgements}
+
+This package follows the example of \pkg{tikzDevice}, originally written by
+Charlie Sharpsteen and Cameron Bracken and maintained by Ralf Stubner and
+contributors. Their work showed how an \lang{R} graphics device could use a
+document typesetter both to measure labels and to produce the final figure.
+The organization of this manual and the README follows their documentation.
+The page layout and heading styles are adapted from their manual style file.
+The source project is available at
+\url{https://github.com/daqana/tikzDevice}.
+
+We would like to thank Johannes Wolf, fenjalien, and the CeTZ contributors
+for the drawing library on which this device depends. CeTZ provides the
+paths, content nodes, named anchors, and canvas transformations used in the
+generated figures. Its source and manual are available at
+\url{https://github.com/cetz-package/cetz}.
+
+We also thank the \lang{R} Core Team and Paul Murrell for the \lang{R}
+graphics engine and its documentation, the Typst developers for the typesetter,
+and the MiTeX developers for the interpretation of \LaTeX{} labels.
+
+\part{Usage and Examples}\label{part:usage}
+
+\chapter{Loading the Package}
+
+The package is loaded in the usual way:
+
+<<loading,eval=FALSE>>=
+library(cetzDevice)
+@
+
+The main function, \code{cetz()}, opens a graphics device. Plotting commands
+then draw on that device until it is closed with \code{dev.off()}. The output
+file is written when the device closes. \code{cetz_save()} performs these
+steps for a plot object or a function containing drawing commands.
+
+\section{Options That Affect Package Behavior}
+
+The settings described here are arguments to \code{cetz()}. They apply to
+one device and may also be passed through \code{cetz_save()}.
+
+\subsection{The \pkgopt{metrics} and \pkgopt{typst} Arguments}
+
+By default, the device runs \code{typst query} to obtain text measurements.
+The \pkgopt{typst} argument gives the path to the executable; its default is
+\code{Sys.which("typst")}. A working Typst installation is checked before
+the device is opened.
+
+The alternative \code{metrics = "systemfonts"} uses the \pkg{systemfonts}
+package. This is faster for plots containing many different labels and does
+not run Typst during export. Its measurements approximate Typst's text
+layout. This backend accepts plain text labels.
+
+\subsection{The \pkgopt{family} and \pkgopt{font_map} Arguments}
+
+The default family is Arial. The generic families \code{sans}, \code{serif},
+\code{mono}, and \code{symbol} map to Arial, Times New Roman, Courier New,
+and Symbol. The mapping can be replaced:
+
+<<font-map,eval=FALSE>>=
+cetz("figure.typ", family = "Libertinus Serif",
+     font_map = c(sans = "Libertinus Sans",
+                  serif = "Libertinus Serif",
+                  mono = "DejaVu Sans Mono", symbol = "Symbol"))
+plot(pressure)
+dev.off()
+@
+
+Use a family installed on the machine that exports the plot and on the
+machine that compiles it. The \pkg{systemfonts} backend records the resolved
+system family in the output, including a substitute for a missing family.
+
+\subsection{The \pkgopt{cache_dir} and \pkgopt{cache_key} Arguments}
+
+Measurements are shared by devices in the same \lang{R} session. Setting
+\pkgopt{cache_dir} also saves them on disk for use in later sessions.
+The cache distinguishes label content, font settings, backend versions,
+preambles, and statically named local dependencies.
+
+Changing \pkgopt{cache_key} starts a separate set of measurements. This is
+useful after installing fonts or changing a dependency whose filename is
+computed by Typst code. The cache functions are described in
+Chapter~\ref{chap:metrics}.
+
+\subsection{The \pkgopt{text_mode} Argument}
+
+Unmarked labels are plain text by default. Setting \code{text_mode = "typst"}
+interprets them as Typst markup; \code{text_mode = "latex"} interprets them
+as \LaTeX{} text through MiTeX 0.2.6. Both modes require
+\code{metrics = "typst"}.
+
+The functions \code{cetz_typst()} and \code{cetz_latex()} mark individual
+labels. They can be used when the rest of the plot contains ordinary text.
+Mathematics uses dollar delimiters in both syntaxes.
+
+\subsection{The \pkgopt{preamble} Argument}
+
+The \pkgopt{preamble} is a character vector of Typst source lines inserted
+into both the measurement document and the output. Relative imports are
+resolved beside the output file. Definitions used by a Typst label must be
+made available in the \code{r-label-scope} dictionary:
+
+<<preamble-example>>=
+cetz("preamble.typ", width = 4.5, height = 3,
+     family = "Libertinus Serif", preamble = c(
+       "#let term = [Shared definition]",
+       "#let r-label-scope = (term: term)"))
+plot(1:3, xlab = cetz_typst("#term"))
+dev.off()
+@
+
+\subsection{The \pkgopt{lwd_unit} Argument}
+
+The value of \pkgopt{lwd_unit} is the number of Typst points used for an
+\lang{R} line width of one. The default is 0.75, corresponding to one
+ninety-sixth of an inch. Typst uses 72 points per inch.
+
+\subsection{The \pkgopt{onefile} Argument}
+
+With \code{onefile = TRUE}, every page is saved in a single module. A page
+is selected in Typst with \code{r-figure(page: 2)}. The exported
+\code{r-figures} array contains the individual page functions.
+
+With \code{onefile = FALSE}, the filename must contain one integer
+placeholder, for example \code{figure-\%03d.typ}. Each page is then written
+to its own file. Console output requires \code{onefile = TRUE}.
+
+\chapter{The \code{cetz} Function}\label{chap:cetz}
+
+\section{Description}
+
+The \code{cetz()} function opens an \lang{R} graphics device which supports
+output in the CeTZ drawing language. The resulting Typst module can be
+imported into a document or placed inside a CeTZ canvas.
+
+The module exports \code{r-figure()}, \code{r-figures}, \code{r-draw()},
+and \code{r-elements()}. The first two produce complete plots. The latter
+two allow the plot to be combined with other CeTZ drawings.
+
+\section{Usage}
+
+<<cetz-usage,eval=FALSE>>=
+cetz(file = "Rplots.typ", width = 7, height = 7,
+     pointsize = 12, family = "Arial", bg = "white",
+     standalone = FALSE, metrics = c("typst", "systemfonts"),
+     typst = Sys.which("typst"),
+     font_map = c(sans = "Arial", serif = "Times New Roman",
+                  mono = "Courier New", symbol = "Symbol"),
+     text_mode = c("plain", "typst", "latex"),
+     preamble = character(), cache_dir = NULL,
+     cache_key = "default", fg = "black", lwd_unit = 0.75,
+     onefile = TRUE, console = FALSE)
+@
+
+The \pkgopt{file} argument gives the output path. The containing directory
+must exist. Width and height are in inches; \pkgopt{pointsize} is the initial
+text size in points. The \pkgopt{bg} and \pkgopt{fg} arguments give the
+starting background and foreground colors. An alpha channel may be used,
+including \code{bg = "transparent"}.
+
+The \code{cetz_save()} function accepts the same device arguments:
+
+<<save-usage,eval=FALSE>>=
+cetz_save("figure.typ", function() plot(pressure),
+          width = 6, height = 4)
+@
+
+It also accepts a plot object which can be drawn with \code{print()}, such
+as a \pkg{ggplot2} object. The device is closed if drawing fails, and the
+original error is reported to the caller. On success, \code{cetz_save()}
+returns the output path invisibly; \code{cetz()} returns the device number
+invisibly.
+
+\section{Font Size Calculations}
+
+The device reports its dimensions to \lang{R} in points, with 72 points to
+the inch. A label's size is obtained from the graphical parameters supplied
+by the graphics engine. In base graphics this includes the device point
+size and \code{cex}; grid supplies its own font size and expansion factor.
+The resulting size is used for both measurement and output.
+
+Plot layout is calculated by \lang{R} during export. Axis labels, margins,
+legends, and facets therefore depend on the selected family and size.
+Choose the final figure dimensions and font before drawing the plot.
+Changing text styles in an imported module does not run the \lang{R}
+layout calculations again.
+
+\subsection{UTF-8 Output}
+
+The output is written as UTF-8. Ordinary labels are quoted as Typst strings,
+so characters such as underscores and percent signs can be used directly.
+Unicode characters require a font containing the corresponding glyphs.
+Typst's \code{typst fonts} command lists the families it can find.
+
+\section{Examples}
+
+\subsection{Default Mode}
+
+The default output is a module intended for inclusion in another document.
+For example, the following commands produce a scatter plot with a fitted
+regression line:
+
+<<default-mode>>=
+cetz("default.typ", width = 4.5, height = 3,
+     family = "Libertinus Serif")
+plot(mtcars$wt, mtcars$mpg, xlab = "Weight", ylab = "MPG")
+abline(lm(mpg ~ wt, data = mtcars), col = "red", lwd = 2)
+dev.off()
+@
+
+The file is included in a Typst document as follows:
+
+\begin{typstcode}
+#import "default.typ": r-figure
+
+#figure(
+  r-figure(),
+  caption: [Vehicle weight and fuel economy.],
+)
+\end{typstcode}
+
+\expandafter\def\csname captiondefault\endcsname{Output from the default mode.}
+\manualfigure{default}{0.68}
+
+\subsection{Raw Element Mode}
+
+Every module exports \code{r-elements()} for drawing in an existing canvas.
+This corresponds to the use of \code{bareBones} output in \pkg{tikzDevice}.
+The coordinates are numeric Typst points, so the canvas length should be
+set to \code{1pt}:
+
+\begin{typstcode}
+#import "default.typ": r-elements
+#import "@preview/cetz:0.5.3" as cetz
+
+#cetz.canvas(length: 1pt, {
+  import cetz.draw: *
+  r-elements()
+})
+\end{typstcode}
+
+The default raw elements omit \lang{R}'s clipping containers. Passing
+\code{clip: true} retains panel clipping, including text, images, and line
+widths. This mode also applies canvas transformations to the whole clipped
+layer. Unclipped elements follow CeTZ's native transformation rules for
+content and physical stroke widths.
+
+To place the complete plot at a named position, use \code{r-draw()}:
+
+\begin{typstcode}
+#import "default.typ": r-draw
+#import "@preview/cetz:0.5.3" as cetz
+
+#cetz.canvas({
+  import cetz.draw: *
+  r-draw(origin: (0, 0), angle: 0deg, name: "plot")
+})
+\end{typstcode}
+
+This preserves the plot's physical size and clipping. Rotation, scaling,
+shearing, and reflection of the surrounding canvas also transform its
+text, strokes, images, gradients, and named anchors.
+
+\subsection{Stand Alone Mode}
+
+Setting \code{standalone = TRUE} adds page settings and draws all recorded
+pages. The resulting file can be compiled directly:
+
+<<standalone-mode>>=
+cetz("standalone.typ", width = 4.5, height = 3,
+     family = "Libertinus Serif", standalone = TRUE)
+plot(pressure, type = "b")
+dev.off()
+@
+
+\begin{shellcode}
+typst compile standalone.typ standalone.svg
+\end{shellcode}
+
+For a multipage SVG export, use a page placeholder:
+
+\begin{shellcode}
+typst compile standalone.typ 'standalone-{p}.svg'
+\end{shellcode}
+
+A stand-alone file can still be imported as a module.
+
+\subsection{Console Output Mode}
+
+With \code{console = TRUE}, the module is written to standard output when
+the device closes. An empty filename selects the same mode. The output
+can be captured for further processing:
+
+<<console-mode,eval=FALSE>>=
+code <- capture.output({
+  cetz(file = "", width = 4, height = 3)
+  plot(pressure)
+  dev.off()
+})
+@
+
+\subsection{Using Typst and \LaTeX{} Labels}
+
+The functions \code{cetz_typst()} and \code{cetz_latex()} mark labels for
+typesetting in the requested syntax. Ordinary strings in the same plot
+remain plain text.
+
+<<math-labels>>=
+cetz("math.typ", width = 4.5, height = 3,
+     family = "Libertinus Serif")
+plot(1:5, (1:5)^2,
+     xlab = cetz_typst("$alpha^2$"),
+     ylab = cetz_latex("$\\frac{x^2}{\\sigma}$"))
+text(3, 20, cetz_typst("$integral_0^1 x^2 dif x$"))
+dev.off()
+@
+
+\expandafter\def\csname captionmath\endcsname{Typst and MiTeX mathematics in the same plot.}
+\manualfigure{math}{0.68}
+
+For plots in which every label uses one syntax, set \pkgopt{text_mode} at
+device creation. MiTeX implements a subset of \LaTeX{} commands; it does
+not load \LaTeX{} packages or execute TikZ drawings. Existing formula
+labels written for \pkg{tikzDevice} can be used where their commands are
+supported by MiTeX.
+
+\subsection{Annotating Graphics with CeTZ Commands}
+
+The \code{cetz_annotate()} function inserts CeTZ code into the drawing.
+\code{cetz_coord()} gives a name to an \lang{R} position, and
+\code{cetz_node()} places a content node at that position. Base graphics
+coordinates are interpreted in the current plot's user coordinate system.
+
+<<annotations>>=
+cetz("annotations.typ", width = 4.5, height = 3,
+     family = "Libertinus Serif")
+plot(1:5, (1:5)^2)
+cetz_coord(4, 16, "marked")
+cetz_node(2, 20, cetz_latex("$y=x^2$"), name = "label",
+          options = 'frame: "rect", padding: 3')
+cetz_annotate(
+  'line("label.east", "marked", stroke: red, mark: (end: ">"))')
+dev.off()
+@
+
+\expandafter\def\csname captionannotations\endcsname{A CeTZ node and arrow added to a base plot.}
+\manualfigure{annotations}{0.68}
+
+Raw CeTZ code uses device points measured from the lower left corner of
+the page. Annotations are clipped to the page by default. Passing
+\code{clip = TRUE} uses the current \lang{R} clipping rectangle instead.
+Names remain available in later clipping layers, including anchors such
+as \code{label.north}. A grouped plot exposes these as
+\code{plot.label.north} when \code{r-draw(name: "plot")} is used.
+
+The grid equivalents return grobs, which are placed when drawn:
+
+<<grid-annotations>>=
+cetz("grid.typ", width = 4.5, height = 3,
+     family = "Libertinus Serif")
+grid::grid.newpage()
+grid::pushViewport(grid::viewport(xscale = c(0, 5),
+                                  yscale = c(0, 25)))
+grid::grid.draw(cetz_coord_grob(4, 16, "marked"))
+grid::grid.draw(cetz_node_grob(2, 20, "A grid label", name = "label"))
+grid::grid.draw(cetz_annotate_grob(
+  'line("label.east", "marked", stroke: red)'))
+grid::popViewport()
+dev.off()
+@
+
+Numeric grid positions use \code{native} units by default. Explicit unit
+objects can be used instead. Each node accepts one position and one text,
+numeric, or logical label. Its text follows the viewport rotation and
+graphical parameters, including color and alpha. Multiple nodes can be
+combined with \code{grid::grobTree()}.
+
+\subsection{Plotmath and Unicode Characters}
+
+The \lang{R} graphics engine interprets \code{expression()} labels and sends
+the resulting character and drawing operations to the device. These labels
+retain \lang{R}'s plotmath layout. To obtain native Typst mathematics, use
+\code{cetz_typst()} instead.
+
+<<plotmath-example>>=
+cetz("plotmath.typ", width = 4.5, height = 3,
+     family = "Libertinus Serif")
+plot(1:5, main = expression(alpha^2 + beta^2 == gamma^2),
+     xlab = "Observation", ylab = "Value")
+dev.off()
+@
+
+\subsection{Using ggplot2}
+
+A ggplot object can be passed directly to \code{cetz_save()}. Set the theme
+family to the one used in the document:
+
+<<ggplot-example>>=
+library(ggplot2)
+p <- ggplot(mtcars, aes(wt, mpg, color = factor(cyl))) +
+  geom_point() +
+  labs(color = "Cylinders") +
+  theme_minimal(base_family = "Libertinus Serif")
+cetz_save("ggplot.typ", p, width = 4.5, height = 3,
+          family = "Libertinus Serif")
+@
+
+\expandafter\def\csname captionggplot\endcsname{A ggplot2 scatter plot with a discrete legend.}
+\manualfigure{ggplot}{0.68}
+
+\subsection{Raster Images}
+
+The device accepts \code{rasterImage()}, \code{grid.raster()},
+\code{geom_raster()}, and raster color bars. Images are encoded as PNG
+bytes in the module, so no separate image files need to accompany it.
+Identical images share a resource even when drawn on different pages.
+
+<<raster-example>>=
+data <- expand.grid(x = 1:20, y = 1:15)
+data$value <- with(data, sin(x / 3) * cos(y / 4))
+p <- ggplot(data, aes(x, y, fill = value)) +
+  geom_raster() + scale_fill_viridis_c() + coord_equal() +
+  theme_minimal(base_family = "Libertinus Serif")
+cetz_save("raster.typ", p, width = 4.5, height = 3,
+          family = "Libertinus Serif")
+@
+
+\expandafter\def\csname captionraster\endcsname{Embedded raster data with vector axes, labels, and legend text.}
+\manualfigure{raster}{0.68}
+
+Image transparency, rotation, and reflected extents are retained. The
+\code{interpolate} flag selects Typst's \code{smooth} or \code{pixelated}
+image scaling.
+
+\subsection{Gradient Fills}
+
+Linear gradients and radial gradients with nested circles are supported
+on rectangles, circles, polygons, and compound paths. Fills are embedded
+as SVG vectors; CeTZ draws their outlines.
+
+<<gradient-example>>=
+cetz("gradient.typ", width = 4.5, height = 2.5,
+     family = "Libertinus Serif")
+grid::grid.newpage()
+grid::grid.rect(width = 0.85, height = 0.75,
+  gp = grid::gpar(col = NA, fill = grid::linearGradient(
+    c("#2673b8", "#e6b450", "#d45d36"), group = FALSE)))
+dev.off()
+@
+
+\expandafter\def\csname captiongradient\endcsname{A linear gradient embedded as vector content.}
+\manualfigure{gradient}{0.68}
+
+The gradient retains its device-space endpoints, color stops, alpha, and
+\code{pad}, \code{repeat}, \code{reflect}, or \code{none} extension mode.
+Radial circles must have different radii, with one circle contained in the
+other. Reversed radii are handled by swapping the circles and color stops.
+Other radial geometry produces an error.
+
+With \lang{R} 4.2 or later, ggplot2 can request a vector gradient color bar:
+
+<<gradient-guide,eval=FALSE>>=
+p + guides(fill = guide_colourbar(display = "gradient"))
+@
+
+Tiling patterns, masks, nonrectangular clipping paths, glyph runs, and
+advanced compositing are not implemented.
+
+\subsection{Multiple Pages}
+
+Successive plots are recorded as separate pages. By default, all pages
+share one file and its image, gradient, and stroke resources. To write a
+file for each page:
+
+<<multiple-pages>>=
+cetz("page-%03d.typ", width = 4.5, height = 3,
+     family = "Libertinus Serif", onefile = FALSE,
+     standalone = TRUE)
+plot(pressure)
+hist(iris$Sepal.Length, main = "Sepal length", xlab = "Length")
+dev.off()
+@
+
+\chapter{The Text Measurement Cache}\label{chap:metrics}
+
+\section{Description}
+
+The device measures labels through the selected backend and keeps the
+results in a cache. Repeated labels in the same font do not require
+another Typst query. Cache entries contain the width, ascent, and descent
+in device points.
+
+The functions \code{cetz_cache_info()} and \code{cetz_clear_cache()}
+inspect and clear this cache. Measurements can be requested through the
+usual \lang{R} functions, including \code{strwidth()} and \code{strheight()},
+while the device is active.
+
+\section{Usage}
+
+<<cache-usage,eval=FALSE>>=
+cetz_cache_info()
+cetz_clear_cache(cache_dir = NULL)
+@
+
+The first function returns a list containing \code{entries}, \code{hits},
+\code{misses}, and \code{typst_calls}. The last count includes measurement
+queries but not CLI version probes. The second function clears session
+entries and resets these counts. If a directory is supplied, it also
+removes the metric files belonging to this package from that directory.
+
+\section{Examples}
+
+<<cache-example,eval=FALSE>>=
+cache <- tools::R_user_dir("cetzDevice", "cache")
+cetz("figure.typ", family = "Libertinus Serif", cache_dir = cache)
+plot.new()
+strwidth("A measured label", units = "inches")
+strwidth("A measured label", units = "inches")
+dev.off()
+cetz_cache_info()
+@
+
+The second request uses the cached result. Reopening a device with the
+same settings reuses session entries. A new \lang{R} process can reuse
+entries stored in \pkgopt{cache_dir}. Damaged disk entries are recomputed.
+
+\part{Installation Guide}\label{part:installation}
+
+\chapter{Obtaining a Typst Distribution}
+
+The device requires \lang{R} 4.1.0 or later. The default measurement
+backend and the exported figures require Typst 0.15.0 or later. Typst
+provides a command-line executable for Windows, Linux, and macOS at
+\url{https://github.com/typst/typst/releases}.
+
+After installation, the following command should print the version:
+
+\begin{shellcode}
+typst --version
+\end{shellcode}
+
+The executable must be available to the \lang{R} session. Check its location
+with \code{Sys.which("typst")}, or pass its full path to \code{cetz()}.
+
+\section{Windows}
+
+Download the Windows archive from the Typst releases page, extract it,
+and add the directory containing \code{typst.exe} to \code{PATH}. Restart
+\lang{R} after changing the environment. Building the \lang{R} package from
+source also requires Rtools for the installed version of \lang{R}.
+
+\section{UNIX/Linux}
+
+Install Typst with the distribution's package manager or use the Linux
+archive from the releases page. Check the installed version, since a
+distribution may package an older release. A C compiler and the \lang{R}
+development headers are needed to build \pkg{cetzDevice} from source.
+
+\section{Mac OS X}
+
+Typst can be installed with Homebrew:
+
+\begin{shellcode}
+brew install typst
+\end{shellcode}
+
+The release archives also contain macOS executables. Building this package
+from source requires the Xcode Command Line Tools. An \lang{R} session
+started from a graphical application may have a different \code{PATH}
+from a terminal; the \pkgopt{typst} argument can specify the executable
+directly.
+
+\section{Installing CeTZ and Other Packages}
+
+\subsection{Using the Typst Package Registry}
+
+The generated module imports CeTZ 0.5.3 from the Typst preview registry.
+Typst downloads it on first compilation and stores it in the package
+cache. No separate CeTZ installation command is needed. \LaTeX{} labels
+also import MiTeX 0.2.6.
+
+The package version has four components. The first three identify the exact
+CeTZ version; the fourth counts device releases for that version, starting
+at one. For example, 0.5.3.2 is the second device release for CeTZ 0.5.3.
+The device revision restarts at one when the CeTZ version changes.
+
+Support starts with CeTZ 0.5.3; earlier CeTZ releases have not been adapted.
+The function \code{cetz_backend()} reports the pinned CeTZ version and the
+minimum Typst version.
+
+\subsection{Manual Installation}
+
+For an offline machine, populate Typst's package cache with CeTZ 0.5.3,
+its dependencies, and MiTeX 0.2.6 if needed. Package directories and
+environment variables are described at
+\url{https://github.com/typst/packages}. Fonts used for export must also
+be available on the machine that compiles the document.
+
+Install the \lang{R} package from GitHub:
+
+<<installation,eval=FALSE>>=
+install.packages("remotes")
+remotes::install_github("SchrodingerBlume/cetzDevice")
+@
+
+To install a local source checkout, run \code{R CMD INSTALL .} from its
+root directory. The \pkg{systemfonts} package is optional and can be
+installed with \code{install.packages("systemfonts")}.
+
+\part{Package Internals}\label{part:internals}
+
+\chapter{Introduction and Background}
+
+An \lang{R} plotting function does not normally write a file itself. It
+sends drawing operations to the graphics engine, which calls functions
+provided by the active device. A device can draw on a screen, write an
+image, or record the operations in another graphics language.
+
+The \pkg{tikzDevice} package records those operations as TikZ source and
+uses \LaTeX{} to measure text. The \pkg{cetzDevice} package takes the same
+approach with CeTZ and Typst. The plotting packages do not need to know
+which device is receiving their operations.
+
+The C interface is implemented in \code{src/device.c}. It registers the
+device callbacks and passes drawing operations to \lang{R}. Recording,
+measurement, and serialization are implemented in the package's
+\code{R} directory. The Typst scene code in \code{inst/typst/scene.typ}
+handles shared drawing state and placement in a canvas.
+
+\chapter{Anatomy of an R Graphics Device}
+
+\section{Drawing Routines}
+
+The device supplies callbacks for lines, polylines, polygons, rectangles,
+circles, compound paths, text, and rasters. It also supplies gradient
+callbacks. The graphics engine passes each callback the coordinates and
+graphical context needed to draw the object.
+
+The C functions convert their arguments to \lang{R} objects and call a
+recording closure. The closure stores the operations in drawing order,
+along with their text styles, stroke styles, and clipping state.
+Repeated strokes, images, and gradients share definitions in the module.
+
+Rectangular clipping is implemented with Typst content containers. The
+complete drawing timeline is first resolved in a shared CeTZ context.
+Names and anchors created in one layer therefore remain available to
+later layers. The visible content of each layer is then clipped to its
+recorded rectangle.
+
+\section{Font Metric Routines}
+
+The graphics engine asks the device for string widths and character
+metrics while laying out a plot. The callbacks in \code{src/device.c}
+delegate these requests to the backend in \code{R/metrics.R}.
+Both measurement and output use the same font resolution and label
+interpretation functions.
+
+The device passes \lang{R}'s plotmath requests through its character
+metric interface. Typst and MiTeX labels are measured as complete pieces
+of content instead.
+
+\section{Utility Routines}
+
+The device reports its size and resolution to the engine and records
+page changes. Closing the device finishes the final page, serializes the
+module, and removes temporary measurement files. The output is assembled
+before an existing file is replaced.
+
+Drawing and measurement callbacks use unwind cleanup on \lang{R} 4.6
+and later to release a device lock after a callback error.
+\code{cetz_save()} lets the drawing call finish unwinding before closing
+the device and reporting the error.
+
+\chapter{Calculating Font Metrics}
+
+Text measurements determine the positions of labels and the space used
+by margins and legends. The Typst backend writes a small document using
+the requested label, family, face, and point size. It calls
+\code{typst query} and reads the numeric dimensions from a metadata
+element. The same text expression is later written into the figure.
+
+\section{Character Metrics}
+
+The graphics engine requires a width, ascent, and descent for individual
+characters. Typst measures a box using the text's bounds. Two zero-width
+probe boxes, placed on opposite sides of the baseline, separate the
+measured height into ascent and descent. The results are returned in
+device points.
+
+\section{Calling R Functions from C Functions}
+
+The device stores references to an \lang{R} recording closure and an
+\lang{R} measurement closure. These are preserved while the device is
+open. Drawing callbacks build a call containing the operation type,
+geometry, and graphical context. Measurement callbacks pass the label
+and text style. The closures share the state of that particular device.
+
+The \code{close} callback releases the preserved objects after writing
+the output. Errors during final output are stored in the device state
+and reported by \code{cetz_save()}.
+
+\section{Implementing a System Call to Typst}
+
+The measurement document is created beside the output file so that
+relative preamble imports resolve in the same directory. The executable
+is called through \code{system2()}, with paths quoted separately. The
+query selects one metadata label and returns its JSON value.
+
+Cache keys contain the backend version, platform, text expression,
+preamble, relevant Typst environment variables, and local dependency
+digests. Static local imports are followed recursively. Disk entries
+are written through temporary files and are checked when read.
+
+\chapter{On the Importance of Font and Style Consistency in Reports}
+
+The font used in a plot affects its appearance and its layout. A label
+measured in one family and drawn in another can extend past an axis or
+overlap a neighboring label. The default backend asks Typst to measure
+the same content that will appear in the figure.
+
+Set the device family to the document's text family and use that family
+in plotting themes. A document may use several font sizes, but a plot
+should be exported at the size at which it will be read. Scaling the
+whole plot also scales its text and strokes.
+
+\section{Automatic Report Generation}
+
+An analysis script can produce the figure modules before the report is
+compiled. The Typst document then imports the modules just as it imports
+other source files. A persistent measurement cache avoids repeating
+queries for unchanged labels on later runs.
+
+\begin{shellcode}
+Rscript analysis.R
+typst compile report.typ
+\end{shellcode}
+
+The output records graphics operations. Data mappings, statistical
+transformations, and axis layout remain in the \lang{R} analysis, where
+they can be rerun when the data or figure dimensions change.
+
+\backmatter
+\chapter{References}
+
+\begin{description}
+\item[tikzDevice] Charlie Sharpsteen, Cameron Bracken, Ralf Stubner, and
+contributors. \emph{tikzDevice: R Graphics Output in LaTeX Format}.\newline
+\url{https://github.com/daqana/tikzDevice}
+\item[CeTZ] Johannes Wolf, fenjalien, and contributors.
+\emph{CeTZ: Drawing with Typst}.\newline
+\url{https://github.com/cetz-package/cetz}
+\item[Typst] \emph{Typst Documentation}.\newline
+\url{https://typst.app/docs/}
+\item[MiTeX] \emph{MiTeX: LaTeX Support for Typst}.\newline
+\url{https://github.com/mitex-rs/mitex}
+\item[R] R Core Team. \emph{R Internals}, section ``Graphics Devices''.\newline
+\url{https://cran.r-project.org/doc/manuals/r-release/R-ints.html}
+\end{description}
+
+<<normal-figure,include=FALSE>>=
+cetz("normal.typ", width = 4.5, height = 3.5,
+     family = "Libertinus Serif", pointsize = 11)
+x <- seq(-4, 4, length.out = 200)
+plot(x, dnorm(x), type = "l", col = "blue", lwd = 1.5,
+     xlab = cetz_typst("$x$"), ylab = cetz_typst("$p(x)$"),
+     main = cetz_typst("$p(x) = 1 / sqrt(2 pi) e^(-x^2/2)$"))
+xi <- seq(-2, 2, length.out = 25)
+lines(xi, dnorm(xi), type = "h", col = "gray50")
+lines(xi, dnorm(xi), type = "s")
+text(2.2, 0.3, cetz_typst("$integral_(-2)^2 p(x) dif x approx 0.954$"),
+     cex = 0.8)
+dev.off()
+@
+
+<<render-figures,include=FALSE,purl=FALSE>>=
+for (name in c("normal", "default", "standalone", "preamble", "math",
+               "annotations", "grid", "plotmath", "ggplot", "raster",
+               "gradient", "page-001", "page-002")) {
+  source <- paste0(name, "-wrapper.typ")
+  writeLines(c(sprintf('#import "%s.typ": r-figure', name),
+               '#set page(width: auto, height: auto, margin: 0pt, fill: white)',
+               '#r-figure()'), source)
+  status <- system2(Sys.which("typst"),
+    c("compile", shQuote(source), shQuote(paste0(name, ".pdf"))))
+  if (status != 0L) stop("Cannot compile manual figure: ", name)
+}
+@
+\end{document}

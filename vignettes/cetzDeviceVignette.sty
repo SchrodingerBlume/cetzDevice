@@ -1,0 +1,107 @@
+% Layout adapted from tikzDeviceVignette.sty by Charlie Sharpsteen and
+% Cameron Bracken, distributed with tikzDevice under GPL (>= 2).
+% https://github.com/daqana/tikzDevice
+\NeedsTeXFormat{LaTeX2e}
+\ProvidesPackage{cetzDeviceVignette}
+
+\RequirePackage[T1]{fontenc}
+\RequirePackage{lmodern}
+\RequirePackage{microtype}
+\RequirePackage{xcolor}
+\RequirePackage{graphicx}
+\RequirePackage{tikz}
+\usetikzlibrary{calc,positioning}
+\RequirePackage{listings}
+\RequirePackage{upquote}
+\RequirePackage[colorlinks,linkcolor=blue!60!black,urlcolor=blue!60!black]{hyperref}
+
+\setlrmarginsandblock{0.75in}{0.75in}{*}
+\setulmarginsandblock{0.75in}{1.25in}{*}
+\setheadfoot{\baselineskip}{0.25in}
+\setheaderspaces{*}{0.25in}{*}
+\checkandfixthelayout
+
+\makepagestyle{cetzDevice}
+\makeevenhead{cetzDevice}{\leftmark}{}{\thepage}
+\makeoddhead{cetzDevice}{\rightmark}{}{\thepage}
+\makeheadrule{cetzDevice}{\textwidth}{\normalrulethickness}
+\makepsmarks{cetzDevice}{%
+  \nouppercaseheads
+  \createmark{chapter}{both}{nonumber}{}{}
+  \createplainmark{toc}{both}{\contentsname}
+}
+\makeevenfoot{cetzDevice}{\footnotesize CeTZDevice}{}{Typst Graphics for \textsf{R}}
+\makeoddfoot{cetzDevice}{\footnotesize CeTZDevice}{}{Typst Graphics for \textsf{R}}
+\makefootrule{cetzDevice}{\textwidth}{\normalrulethickness}{\footruleskip}
+\pagestyle{cetzDevice}
+
+\renewcommand{\printpartname}{}
+\renewcommand{\printpartnum}{}
+\renewcommand{\printparttitle}[1]{%
+  \begin{tikzpicture}[remember picture,overlay]
+    \node[anchor=north east,rotate=90,inner sep=0pt,
+      font=\fontsize{36}{40}\selectfont\bfseries]
+      (part) at ([xshift=0.5in,yshift=-0.5in]current page.north west)
+      {\partname\ \thepart};
+    \draw[line width=5pt] ([xshift=7.5pt]part.base west) --
+      ([xshift=7.5pt]part.base east);
+    \node[right=12.5pt of part.base east,anchor=north west,
+      text width=5.6in,align=left,font=\Huge\bfseries] {#1};
+  \end{tikzpicture}%
+}
+\aliaspagestyle{part}{empty}
+
+\newif\ifnumberedchap
+\makechapterstyle{cetzframed}{%
+  \chapterstyle{article}
+  \renewcommand{\printchapternum}{\global\numberedchaptrue}
+  \renewcommand{\printchapternonum}{\global\numberedchapfalse}
+  \renewcommand{\printchaptertitle}[1]{%
+    \begin{tikzpicture}
+      \node[draw,inner xsep=0pt,inner ysep=\baselineskip,
+        text width=\dimexpr\linewidth-2\fboxrule\relax,
+        align=center,font=\chapnamefont] (title) {##1};
+      \ifnumberedchap
+        \node[fill=white,anchor=west,inner xsep=0.5em,inner ysep=0pt,
+          font=\footnotesize\scshape] at ([xshift=1ex]title.north west)
+          {Chapter \oldstylenums{\thechapter}};
+      \fi
+    \end{tikzpicture}%
+  }
+}
+\chapterstyle{cetzframed}
+\aliaspagestyle{chapter}{cetzDevice}
+\setsecheadstyle{\large\bfseries}
+\setsechook{\setsecnumformat{\fbox{\csname the##1\endcsname}\quad}}
+\maxtocdepth{subsection}
+\setsecnumdepth{section}
+\setlength{\cftpartnumwidth}{3em}
+
+\newcommand{\lang}{\textsf}
+\newcommand{\pkg}{\textbf}
+\DeclareRobustCommand{\code}[1]{\texttt{\detokenize{#1}}}
+\DeclareRobustCommand{\pkgopt}[1]{{\color{red!75!black}\texttt{\detokenize{#1}}}}
+\pdfstringdefDisableCommands{%
+  \def\code#1{\detokenize{#1}}\def\pkgopt#1{\detokenize{#1}}}
+\newcommand{\manualfigure}[2]{%
+  \begin{figure}[htbp]
+    \centering\includegraphics[width=#2\linewidth]{figures/#1.pdf}
+    \caption{\csname caption#1\endcsname}
+    \label{fig:#1}
+  \end{figure}%
+}
+\lstset{basicstyle=\small\ttfamily,columns=fullflexible,
+  keepspaces=true,showstringspaces=false,upquote=true,
+  breaklines=true,breakatwhitespace=false,
+  backgroundcolor=\color{black!3},frame=l,framerule=1pt,
+  rulecolor=\color{black!25},xleftmargin=1em,framexleftmargin=0.5em,
+  numbers=left,numberstyle=\tiny\color{black!50},numbersep=1em,
+  keywordstyle=\color{blue!65!black},commentstyle=\color{black!50},
+  stringstyle=\color{red!65!black},aboveskip=1em,belowskip=1em}
+\lstdefinelanguage{Typst}{morekeywords={let,import,as,set,context,for,in},
+  morecomment=[l]{//},morestring=[b]"}
+\lstnewenvironment{rcode}{\lstset{language=R}}{}
+\lstnewenvironment{typstcode}{\lstset{language=Typst}}{}
+\lstnewenvironment{shellcode}{\lstset{language=bash}}{}
+\hypersetup{pdftitle={CeTZDevice: Typst Graphics for R},pdfauthor={Andrew Junhao Wu}}
+\endinput

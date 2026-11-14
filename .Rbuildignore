@@ -1,0 +1,10 @@
+^\.git$
+^\.gitignore$
+^output$
+^\.github$
+^dev$
+^check$
+^docs$
+^examples$
+^cran-comments\.md$
+^vignettes/figures/.*\.(typ|svg|rds)$

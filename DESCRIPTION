@@ -1,0 +1,31 @@
+Package: cetzDevice
+Type: Package
+Title: A 'CeTZ' Graphics Device for R
+Version: 0.5.3.1
+Authors@R: c(
+    person(given = "Andrew Junhao", family = "Wu",
+        role = c("aut", "cre"), email = "andrew.junhao.wu@gmail.com"),
+    person("Charlie", "Sharpsteen", role = "ctb",
+        comment = "Adapted validation scenarios and manual layout"),
+    person("Cameron", "Bracken", role = "ctb",
+        comment = "Adapted validation scenarios and manual layout"))
+Description: A graphics device that translates R graphics engine operations
+    into editable 'CeTZ' source for 'Typst' documents. Supports base and 'grid'
+    graphics, with 'Typst' text measurement, rectangular clipping,
+    transparency, compound paths, embedded raster images, native 'Typst' and
+    'MiTeX' labels, reusable text metrics, annotations, vector gradient fills,
+    and multiple pages.
+License: GPL (>= 3)
+Encoding: UTF-8
+Depends: R (>= 4.1.0)
+Imports: digest, graphics, grDevices, grid, jsonlite, png, utils
+Suggests: ggplot2, knitr, lattice, patchwork, systemfonts, testthat (>= 3.1.8)
+VignetteBuilder: knitr
+URL: https://github.com/SchrodingerBlume/cetzDevice
+BugReports: https://github.com/SchrodingerBlume/cetzDevice/issues
+SystemRequirements: Typst CLI (>= 0.15.0) for Typst font metrics;
+    CeTZ 0.5.3 for compiling exported figures; MiTeX 0.2.6 for LaTeX labels
+NeedsCompilation: yes
+Config/testthat/edition: 3
+Config/cetzDevice/CeTZ: 0.5.3
+Config/cetzDevice/Typst: 0.15.0
